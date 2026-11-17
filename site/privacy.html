@@ -67,7 +67,7 @@
     <p>You can change what is measured on this site at any time, from the link in the footer of every page, and any measurement you switch off stops counting towards these figures too. If you would rather we did not publish figures that include your visit at all, say so and we will take your visits out of the count.</p>
 
     <h2>Downloads</h2>
-    <p>The download link goes through our server first, which sends you on to GitHub, where the app is hosted — so, as with any website you visit, the request that fetches it carries your IP address, and GitHub sees it too. What we do with it is this: we record that a download happened, roughly where from, and which page sent it, and we post a note to our own chat so we know the app is getting out. The note does not include your IP address.</p>
+    <p>The download link goes through our server first, which sends you on to GitHub, where the app is hosted — so, as with any website you visit, the request that fetches it carries your IP address, and GitHub sees it too. What we do with it is this: we record that a download happened, roughly where from, and which page sent it. Nothing else is sent anywhere. The note about a download that used to go to our own chat no longer happens, so a download reaches the analytics and nothing else.</p>
     <p>The count itself is done on our side, so the number of downloads is right even when an ad blocker stops the website's own count. The count is anonymous: it is a count, not a list of who.</p>
 
     <h2>Shared vibescapes</h2>
@@ -90,7 +90,7 @@
       <li><strong>Cloudflare</strong> — the site, the download link and the shared vibescapes are hosted there.</li>
       <li><strong>PostHog</strong> — the analytics for the site and the app, on servers in the United States.</li>
       <li><strong>GitHub</strong> — the releases, and the changelog and issue list on this website, which are fetched from GitHub in your browser.</li>
-      <li><strong>Discord</strong> — our own chat, where the download notes and the crash reports go.</li>
+      <li><strong>Discord</strong> — our own chat, where the gallery announcements and the crash reports go. A download does not.</li>
       <li><strong>Stripe</strong> — only if you choose to buy the author a coffee.</li>
     </ul>
 
@@ -109,8 +109,9 @@
     <p>🩷 from <a href="https://minithlabs.com">Minith Labs</a> · <a href="https://github.com/sydlawrencedev/vibresia">Source on GitHub</a> · <a href="https://github.com/sydlawrencedev/vibresia/issues">Report an issue</a></p>
     <p class="legal-links"><a href="/blog/best-music-visualizer-for-mac-2026">Best music visualizers for Mac</a> · <a href="/blog/milkdrop-alternatives-mac-2026">MilkDrop alternatives for Mac</a> · <a href="/comparison">Vibresia compared</a> · <a href="/blog/apple-music-visualizer">Visualizers for every music app</a></p>
     <p class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p>
-    <p class="get-it"><a class="get-it-link" data-install data-track="download_clicked" data-placement="footer" href="/download?src=footer">Download for Mac</a>. Free to use, and yours to keep.</p>
+    <p class="get-it"><a class="get-it-link" data-install data-install-platform data-track="download_clicked" data-placement="footer" href="/download?src=footer">Download for Mac</a>. Free to use, and yours to keep.</p>
     <p class="privacy">This page counts visits and clicks anonymously. No cookies, no account. <a href="#" data-optout>No thanks, stop measuring this page</a><span id="optout-note" hidden>. Done.</span></p>
+    <script src="/downloads.js" defer></script>
     <script src="/mobile.js" defer></script>
   </footer>
   <!-- /chrome:footer -->

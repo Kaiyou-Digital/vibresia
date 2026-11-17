@@ -26,9 +26,29 @@ import sys
 
 REGIONS = {"nav": "nav.html", "footer": "footer.html"}
 
+# The scripts every page has to load, and where they have to come.
+#
+# The download script detects the visitor's platform and changes the button
+# to match; without it every page's button says "Download for Mac" on a
+# Windows PC, which is a dead end. The share-sheet script comes after it:
+# both are deferred, so they run in the order they are written, and the
+# second one remembers the button's label so it can put it back when the
+# visitor is not on a phone. The other way round, it would remember
+# "Download for Mac" and put that back on a desktop.
+REQUIRED_SCRIPTS = [
+    ("/downloads.js", "/mobile.js"),
+]
+
 # The share pages are generated, so they are not in the repo as a thing you
 # edit — but they are in the repo as files that ship, so they are checked like
 # anything else. generate-share-pages.py calls this at the end for that reason.
+#
+# The dataset pages under site/stats/data/ are hand-written, and they carry
+# the shared chrome too. They were left out of this list, so their footer was
+# a hand-maintained copy that quietly drifted: it kept working, and it was
+# the one place on the site whose download button never learned about the
+# Windows package. A page is on the list or it is not; "not on the list" is
+# not a way of saying "it does not need the shared footer".
 PAGES = ["site/index.html", "site/agents.html", "site/vibescapes.html", "site/vibe.html",
          "site/admin.html", "site/privacy.html", "site/terms.html",
          "site/author/syd-lawrence.html"]
@@ -50,6 +70,12 @@ def pages(root):
             for name in sorted(os.listdir(folder)):
                 if name.endswith(".html"):
                     found.append(f"site/{section}/{name}")
+    # The dataset pages. Hand-written, but they ship with the shared chrome.
+    stats = os.path.join(root, "site", "stats", "data")
+    if os.path.isdir(stats):
+        for name in sorted(os.listdir(stats)):
+            if name.endswith(".html"):
+                found.append(f"site/stats/data/{name}")
     return [p for p in found if os.path.exists(os.path.join(root, p))]
 
 
@@ -95,6 +121,7 @@ def main():
             return 1
 
     changed, missing, drift = [], [], []
+    unscripted = []
     for page in pages(root):
         full = os.path.join(root, page)
         original = open(full).read()
@@ -108,6 +135,14 @@ def main():
             text = result
         if text is None:
             continue
+        # The scripts the shared chrome has to load, and the order they have
+        # to load in. A page that lost one of them still looks right, and the
+        # visitor gets a button for a machine they do not have.
+        for earlier, later in REQUIRED_SCRIPTS:
+            first = text.find(f'src="{earlier}"')
+            second = text.find(f'src="{later}"')
+            if first == -1 or second == -1 or first > second:
+                unscripted.append(f"{page} ({earlier} before {later})")
         if text == original:
             continue
         if check:
@@ -129,12 +164,22 @@ def main():
         if missing:
             print("Pages are missing a shared navbar/footer region.")
             return 1
+        if unscripted:
+            print("Pages are missing a shared script, or load it in the wrong order:")
+            for page in unscripted:
+                print(f"  x {page}")
+            return 1
         print(f"every page's navbar and footer matches site/_partials ({len(pages(root))} pages)")
         return 0
 
     if missing:
         print("Pages are missing a shared navbar/footer region:")
         for page in missing:
+            print(f"  x {page}")
+        return 1
+    if unscripted:
+        print("Pages are missing a shared script, or load it in the wrong order:")
+        for page in unscripted:
             print(f"  x {page}")
         return 1
     if changed:
