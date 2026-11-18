@@ -474,6 +474,19 @@ struct MCPShareTests {
         waitpid(pid, &status, 0)
     }
 
+    @Test("A detached process that has ended is not left as a zombie under the process that started it")
+    func detachedProcessIsNotLeftAsAZombie() throws {
+        let pid = try MCPShare.spawnDetached(executable: "/bin/sh", arguments: ["-c", "exit 0"])
+        // Give it time to end, then ask the system whether it is still there: a zombie still is, until its parent
+        // collects it; one that was collected is not.
+        var gone = false
+        for _ in 0..<40 {
+            if kill(pid, 0) != 0, errno == ESRCH { gone = true; break }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        #expect(gone, "the ended process was cleaned up (it was left as a zombie)")
+    }
+
     @Test("Starting a program that does not exist is reported, not ignored")
     func spawnDetachedFailure() {
         #expect(throws: MCPShare.ClaimError.self) {

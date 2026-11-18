@@ -72,7 +72,11 @@ public enum MCPShare {
 
     /// Starts a program that no client owns: in a session of its own, so that killing the process that started it, or
     /// that process's group, does not take it down, and with stdin, stdout and stderr on /dev/null. Returns its pid.
+    ///
+    /// Nobody waits for it, so when it ends the system cleans it up by itself rather than leaving it as a zombie
+    /// under this process until this one exits (this process ignores `SIGCHLD` from now on).
     public static func spawnDetached(executable: String, arguments: [String]) throws -> pid_t {
+        signal(SIGCHLD, SIG_IGN)
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
