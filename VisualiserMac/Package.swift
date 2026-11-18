@@ -79,11 +79,32 @@ let package = Package(
             path: "Tests/VibresiaShareImageTests",
             linkerSettings: testingLinkerSettings
         ),
+        // Lets every `Vibresia --mcp` on a Mac share one server.
+        //
+        // On its own, and with tests of its own, because it is all sockets,
+        // locks and timing, which only real sockets can check: the first
+        // launch takes a lock and listens, a later one finds it and becomes a
+        // small proxy before the app has started, and the server leaves when
+        // nobody has been connected for a moment.
+        .target(
+            name: "VibresiaMCPShare",
+            path: "Sources/VibresiaMCPShare"
+        ),
+        .testTarget(
+            name: "VibresiaMCPShareTests",
+            dependencies: [
+                "VibresiaMCPShare",
+                .product(name: "Testing", package: "swift-testing")
+            ],
+            path: "Tests/VibresiaMCPShareTests",
+            linkerSettings: testingLinkerSettings
+        ),
         .executableTarget(
             name: "AudioVane",
             dependencies: [
                 .product(name: "PostHog", package: "posthog-ios"),
                 "VibresiaBrand",
+                "VibresiaMCPShare",
                 "VibresiaMinify",
                 "VibresiaShareImage",
             ],
