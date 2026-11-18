@@ -144,7 +144,7 @@ the `u` (`uBass` is `/vibresia/bass`).
 | `genre`, `genreName` | int, string | 0 classical, 1 electronic, 2 rock, 3 pop, 4 hiphop, 5 jazz, 6 blues, 7 country, 8 rnb, 9 ambient (`uGenre`), and its name |
 | `instruments` | 5 floats | confidence for drums, bass, guitar, keys, vocals; see below |
 | `trackPos`, `trackDuration`, `trackProgress`, `trackKnown` | float | where the playhead is in the track, 0 when unknown |
-| `palette`, `vibescape` | string | what is showing |
+| `palette`, `vibescape` | string | what is showing; `vibescape` is a built-in's name (`spectrum`) or, for your own, its id |
 | `instrumentNames` | 5 strings | the instrument order above; sent with the first frame and then every 2 seconds, because UDP has no connection to send it on once |
 
 **Event**, sent at the moment it happens and not inside the bundle (a beat lasts
@@ -153,8 +153,9 @@ each time the beat counter crosses a whole number. Its value is the strength of
 the onset pulse at that moment, which decays after each detected onset, so it is
 sometimes 0 for a beat the tempo tracker placed where no onset was heard.
 
-Instrument confidences are only updated while The Band is on screen, because that is
-the only time the classifier runs.
+The instrument classifier normally runs only while The Band is on screen. While Send
+Analysis over OSC is on it runs on every vibescape, so the instrument confidences are
+always live (this costs some CPU, only for people who turned OSC on).
 
 The code is a target of its own, `Sources/VibresiaOSC`, with tests of its own
 (`Tests/VibresiaOSCTests`): the encoder is checked against the byte layouts in the
