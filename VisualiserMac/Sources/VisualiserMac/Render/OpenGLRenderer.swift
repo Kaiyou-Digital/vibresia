@@ -1265,10 +1265,11 @@ final class OpenGLRenderer: NSObject {
         audio.tick()
         // The instrument classifier is only worth running when the band is
         // on screen — which, during auto-scan, means whenever the scanner
-        // is sitting on the band vibescape.
+        // is sitting on the band vibescape — or when the analysis is being
+        // sent out over OSC, since the instruments are part of what it sends.
         let isBandOnScreen = currentVibescape == .builtin(.band)
             || (currentVibescape == .builtin(.autoScan) && autoScanTarget == .builtin(.band))
-        audio.instruments.isEnabled = isBandOnScreen
+        audio.instruments.isEnabled = isBandOnScreen || oscSender != nil
 
         // Every vibescape runs on the sound-gated clock: it stops (easing out) when
         // there's no source or the music goes quiet, so nothing moves in silence.
