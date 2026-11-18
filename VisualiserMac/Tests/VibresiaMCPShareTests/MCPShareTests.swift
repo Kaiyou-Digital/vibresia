@@ -204,6 +204,23 @@ struct MCPShareTests {
         }
     }
 
+    @Test("A server that leaves does not remove the socket of a newer one")
+    func stopLeavesANewerServersSocketAlone() throws {
+        let path = scratchSocketPath()
+        defer { cleanUp(path) }
+        let first = try claimServer(path)
+        first.start()
+        unlink(path) // the socket vanishes under a live server (a cache cleaner, say)
+        let second = try claimServer(path) // nobody answers, so this one makes a socket of its own
+        second.start()
+        defer { second.stop() }
+
+        first.stop() // the older one leaves
+        let connection = MCPShare.connect(socketPath: path)
+        #expect(connection != nil, "the newer server can still be reached")
+        connection?.close()
+    }
+
     @Test("The socket and its folder are private to the user")
     func socketIsPrivate() throws {
         let path = scratchSocketPath()

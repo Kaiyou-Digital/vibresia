@@ -80,6 +80,9 @@ public final class MCPSocketServer {
     private let socketPath: String
     private let idleSeconds: Double
     private let startupGraceSeconds: Double
+    /// Which file on disk is this server's socket, so that a server that leaves removes its own and never one that
+    /// something else has put at the same path since (a newer server, after this one's file vanished).
+    private let socketIdentity: (device: dev_t, inode: ino_t)?
     private let lock = NSLock()
     private var clients: [ObjectIdentifier: MCPClient] = [:]
     private var idleWork: DispatchWorkItem?
@@ -93,6 +96,8 @@ public final class MCPSocketServer {
         self.socketPath = socketPath
         self.idleSeconds = idleSeconds
         self.startupGraceSeconds = startupGraceSeconds
+        var info = stat()
+        socketIdentity = stat(socketPath, &info) == 0 ? (info.st_dev, info.st_ino) : nil
     }
 
     public var clientCount: Int {
@@ -134,13 +139,21 @@ public final class MCPSocketServer {
         guard !alreadyStopped else { return }
         if wasAccepting { _ = acceptFinished.wait(timeout: .now() + 1) }
         close(listeningDescriptor)
-        unlink(socketPath)
+        removeOwnSocket()
         // Only now, once nothing is accepting: a client accepted while this waited would otherwise be missed and left
         // open, and its other end would wait for ever.
         lock.lock()
         let open = Array(clients.values)
         lock.unlock()
         open.forEach { $0.close() }
+    }
+
+    /// Removes the socket file, but only if it is still this server's.
+    private func removeOwnSocket() {
+        var info = stat()
+        guard let identity = socketIdentity, stat(socketPath, &info) == 0,
+              info.st_dev == identity.device, info.st_ino == identity.inode else { return }
+        unlink(socketPath)
     }
 
     // MARK: - Inside
