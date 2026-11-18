@@ -174,11 +174,21 @@ grade, at the window's size. It is off until you turn it on and the choice is
 remembered. Nothing is drawn for Syphon unless something is receiving, so
 leaving it on costs nothing while no other app is listening.
 
+**Syphon Source** (same menu) goes the other way: pick a server another app is
+running and its picture is shown in place of the vibescape, with the palette
+grade (and Share to Syphon) still applied. Its proportions are kept, so a
+different shape leaves bars. If the source stops, or is not running, the
+vibescape is drawn as usual, so the window is never empty. The choice is
+remembered by name (Syphon's own id changes each time the other app starts) and
+is picked up when that app starts later. Vibresia's own server is not offered, so
+it cannot show itself.
+
 The code is a target of its own, `Sources/VibresiaSyphon`, with tests of its own
 (`Tests/VibresiaSyphonTests`): they draw a picture that is red above and blue
-below, publish it, and read it back through a real Syphon client, because which
-way up a picture arrives is the easy thing to get wrong. Syphon holds a picture
-bottom row first, which is the order OpenGL draws it in, so nothing is flipped.
+below, publish it (or receive one a Metal app publishes), and read it back
+through a real Syphon client, because which way up a picture arrives is the easy
+thing to get wrong. Syphon holds a picture bottom row first, which is the order
+OpenGL draws it in, so nothing is flipped.
 
 Syphon has no Swift package of its own, so the dependency is a fork of it
 (`sydlawrencedev/Syphon-Framework`, branch `swiftpm-metal`), pinned to a commit, which adds one and changes nothing about how
