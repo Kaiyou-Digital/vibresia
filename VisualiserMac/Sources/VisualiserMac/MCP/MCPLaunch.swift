@@ -40,19 +40,25 @@ enum MCPLaunch {
     }
 
     private static func becomeAClient() {
-        if let connection = MCPShare.connect(socketPath: socketPath) { proxy(connection) }
+        if let connection = findOrStartServer() { proxy(connection) }
+        NSLog("[MCP] no shared server could be reached; serving this client alone")
+    }
 
-        // Nobody is serving: start the server, in a session of its own, and wait for it. Two clients doing this at
-        // the same instant start two, and the one that loses the lock leaves at once (`becomeTheServer`).
-        guard let executable = Bundle.main.executablePath else { return }
+    /// A connection to the shared server, starting it if nobody is serving; nil if that fails.
+    ///
+    /// The server is started in a session of its own and waited for. Two clients doing this at the same instant start
+    /// two servers, and the one that loses the lock leaves at once (`becomeTheServer`). A socket left by a server that
+    /// died is replaced by the one that starts.
+    private static func findOrStartServer() -> MCPSocketConnection? {
+        if let connection = MCPShare.connect(socketPath: socketPath) { return connection }
+        guard let executable = Bundle.main.executablePath else { return nil }
         do {
             _ = try MCPShare.spawnDetached(executable: executable, arguments: ["--mcp", "--mcp-daemon"])
         } catch {
-            NSLog("[MCP] could not start the shared server (\(error)); serving this client alone")
-            return
+            NSLog("[MCP] could not start the shared server (\(error))")
+            return nil
         }
-        if let connection = MCPShare.waitForServer(socketPath: socketPath, timeout: startTimeout) { proxy(connection) }
-        NSLog("[MCP] the shared server did not come up; serving this client alone")
+        return MCPShare.waitForServer(socketPath: socketPath, timeout: startTimeout)
     }
 
     /// Serves until nobody has been connected for a while, then exits. Never returns.
@@ -77,8 +83,11 @@ enum MCPLaunch {
         }
     }
 
+    /// Copies this client's stdin and stdout to the server until its stdin closes. If the server goes away meanwhile,
+    /// the client starts a new one and carries on, with an error for any request that was waiting on the old one; it
+    /// leaves only if no server can be started.
     private static func proxy(_ connection: MCPSocketConnection) -> Never {
-        MCPProxy.run(connection)
+        MCPProxy.run(connection, reconnect: { findOrStartServer() })
         exit(0)
     }
 

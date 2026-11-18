@@ -307,7 +307,9 @@ socket, `~/Library/Caches/Vibresia/mcp.sock`, that only you can connect to
 stdin and stdout to that socket, which costs a few MB instead of a whole copy of
 the app (about 150 MB each, before). Closing or killing one session leaves the
 others served, and the server leaves a few seconds after the last session has
-gone. If the server can't be started, each `--mcp` serves its own client alone.
+gone. If the server itself is killed, each session starts a new one and carries
+on; a request that was waiting at that moment gets an error saying so, to try
+again. If a server can't be started, each `--mcp` serves its own client alone.
 
 The tools it offers:
 
