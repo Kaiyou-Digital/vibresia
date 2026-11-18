@@ -296,9 +296,18 @@ For clients that read a JSON file rather than a command line:
 
 It's the same binary, run with `--mcp`: it speaks JSON-RPC over stdin and
 stdout, has no window, no dock icon and no analytics, and doesn't listen on
-a port — so there's nothing to secure. It reads and writes the same files
-the app does, so a vibescape an agent writes turns up in the app within a
+a port, so nothing outside your Mac can reach it. It reads and writes the same
+files the app does, so a vibescape an agent writes turns up in the app within a
 second, whether or not Vibresia is open.
+
+Every AI session on your Mac shares one server. The first `--mcp` starts it,
+as a background process of its own that no session owns, listening on a Unix
+socket, `~/Library/Caches/Vibresia/mcp.sock`, that only you can connect to
+(mode 0600). Every `--mcp`, that first one included, then only copies its
+stdin and stdout to that socket, which costs a few MB instead of a whole copy of
+the app (about 150 MB each, before). Closing or killing one session leaves the
+others served, and the server leaves a few seconds after the last session has
+gone. If the server can't be started, each `--mcp` serves its own client alone.
 
 The tools it offers:
 

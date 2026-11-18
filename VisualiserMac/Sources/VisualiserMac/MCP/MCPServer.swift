@@ -7,11 +7,17 @@ import Foundation
 /// binary as the app, run with `--mcp`.
 ///
 /// Two things it deliberately doesn't do: it doesn't listen on a port, and
-/// it doesn't need the app to be running. A stdio server has no socket to
-/// secure, and it reads and writes the same files the app does — so an agent
-/// can create a vibescape whether or not Vibresia is open.
+/// it doesn't need the app to be running. It reads and writes the same files
+/// the app does, so an agent can create a vibescape whether or not Vibresia is
+/// open.
+///
+/// Every `--mcp` on a Mac shares one of these: a server of its own, started by
+/// the first client, listens on a Unix socket private to the user (not a port),
+/// and each client only copies its stdin and stdout to it (see `MCPLaunch`).
+/// Each client has an `MCPServer` of its own in that process, so each gets only
+/// its own replies.
 final class MCPServer {
-    private let output: FileHandle
+    private let emit: (String) -> Void
     private let input: FileHandle
     /// The version of the protocol this server speaks. The client sends the
     /// version it wants; if it's one we know, we use theirs.
@@ -19,7 +25,13 @@ final class MCPServer {
 
     init(input: FileHandle = .standardInput, output: FileHandle = .standardOutput) {
         self.input = input
-        self.output = output
+        self.emit = { output.write(Data(($0 + "\n").utf8)) }
+    }
+
+    /// A server whose replies go wherever `emit` sends them: one line each, without the newline.
+    init(emit: @escaping (String) -> Void) {
+        self.input = .standardInput
+        self.emit = emit
     }
 
     /// Starts reading messages; the process leaves when stdin closes.
@@ -31,6 +43,13 @@ final class MCPServer {
     /// the client was connected, and macOS listed the process as Not
     /// Responding in Activity Monitor.
     func run() {
+        // This launch is the shared server: serve every client, this process's own stdin and stdout included.
+        if let shared = MCPLaunch.pending {
+            MCPLaunch.pending = nil
+            MCPLaunch.serve(shared)
+            return
+        }
+
         // The app's own stdout is a log; in MCP vibescape stdout is the protocol
         // channel, so nothing else may write to it.
         setvbuf(stdout, nil, _IONBF, 0)
@@ -54,7 +73,7 @@ final class MCPServer {
     }
 
     /// One line from the client: a JSON-RPC message, or something to skip.
-    private func process(_ line: String) {
+    func process(_ line: String) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return }
         guard let data = trimmed.data(using: .utf8),
@@ -115,7 +134,7 @@ final class MCPServer {
     private func send(_ message: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: message),
               let text = String(data: data, encoding: .utf8) else { return }
-        output.write(Data((text + "\n").utf8))
+        emit(text)
     }
 
     private var serverVersion: String {

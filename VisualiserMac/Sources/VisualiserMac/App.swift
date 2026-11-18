@@ -9,6 +9,14 @@ struct VisualiserApp: App {
     /// The updater, so the menu can say an update is waiting for it.
     @ObservedObject private var updater = UpdateChecker.shared
 
+    /// `Vibresia --mcp` decides first thing, before AppKit and SwiftUI start, whether this launch serves every client
+    /// or only proxies to the server that is already running (`MCPLaunch`). A proxy never gets past here, which is
+    /// why it costs a few MB instead of the whole app. It must be here and not in a replacement for `@main`: that
+    /// left the normal app with no window.
+    init() {
+        if CommandLine.arguments.contains("--mcp") { MCPLaunch.begin() }
+    }
+
     var body: some Scene {
         WindowGroup("VIBRESIA") {
             ContentView()
