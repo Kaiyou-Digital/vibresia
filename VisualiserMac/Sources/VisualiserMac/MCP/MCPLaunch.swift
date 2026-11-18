@@ -11,9 +11,6 @@ import VibresiaMCPShare
 /// no client owns it. A client's process can be closed, killed or its whole process group signalled when its session
 /// ends, and the other sessions' servers do not go with it. It leaves a few seconds after the last client has gone.
 enum MCPLaunch {
-    /// Set when this process is the shared server, until `MCPServer.run` takes it.
-    nonisolated(unsafe) static var pending: MCPSocketServer?
-
     /// How long the server stays after the last client has gone. Short, because a client that closes stdin usually
     /// waits for its process to exit before it carries on.
     static let idleSeconds = 3.0
@@ -58,11 +55,18 @@ enum MCPLaunch {
         NSLog("[MCP] the shared server did not come up; serving this client alone")
     }
 
-    private static func becomeTheServer() {
+    /// Serves until nobody has been connected for a while, then exits. Never returns.
+    ///
+    /// This is deliberately not the app: SwiftUI and AppKit never start here. A process that starts `NSApplication`
+    /// registers with macOS as a running copy of Vibresia whatever its activation policy, so opening Vibresia
+    /// reactivated the server instead of starting a window, and quitting it from the Dock ended every session's
+    /// server (`.accessory` and `.prohibited` both did this). Run as a plain process it is not registered at all.
+    private static func becomeTheServer() -> Never {
         do {
             switch try MCPShare.claim(socketPath: socketPath, idleSeconds: idleSeconds) {
             case .server(let server):
-                pending = server
+                serve(server)
+                dispatchMain() // runs the main queue, where each request is handled; `onIdle` exits
             case .proxy(let connection):
                 connection.close() // another server won the race; there is nothing for this one to do
                 exit(0)

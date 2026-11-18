@@ -43,13 +43,6 @@ final class MCPServer {
     /// the client was connected, and macOS listed the process as Not
     /// Responding in Activity Monitor.
     func run() {
-        // This launch is the shared server: serve every client, this process's own stdin and stdout included.
-        if let shared = MCPLaunch.pending {
-            MCPLaunch.pending = nil
-            MCPLaunch.serve(shared)
-            return
-        }
-
         // The app's own stdout is a log; in MCP vibescape stdout is the protocol
         // channel, so nothing else may write to it.
         setvbuf(stdout, nil, _IONBF, 0)
