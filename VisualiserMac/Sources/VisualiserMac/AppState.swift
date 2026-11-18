@@ -159,6 +159,13 @@ final class AppState: ObservableObject {
         UserDefaults.standard.bool(forKey: "audiovane.alwaysOnTop")
     }()
 
+    /// Whether the analysis (levels, spectrum, beat, tempo, genre, instruments)
+    /// is sent to other programs over OSC. Off until the person turns it on, and
+    /// it stays as they left it.
+    @Published private(set) var oscEnabled: Bool = {
+        UserDefaults.standard.bool(forKey: "audiovane.osc")
+    }()
+
     /// Whether the credits / support popover is open.
     @Published var showAbout: Bool = false
 
@@ -211,6 +218,9 @@ final class AppState: ObservableObject {
         // back to Rock. Genre *detection* still re-arms per song as usual.
         self.genre = Self.savedGenre
         self.renderer.genre = self.genre
+        let savedOSCPort = UserDefaults.standard.integer(forKey: "audiovane.oscPort")
+        if (1 ... 65535).contains(savedOSCPort) { self.renderer.oscPort = UInt16(savedOSCPort) }
+        self.renderer.oscEnabled = self.oscEnabled
         // Whether to name the song by listening is the person's choice, so it
         // survives a relaunch rather than quietly resetting.
         self.identifyByListening = Self.savedIdentifyByListening
@@ -1367,6 +1377,13 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(on, forKey: "audiovane.alwaysOnTop")
         applyWindowLevel()
         Task { await Analytics.shared.track("always_on_top_changed", ["on": on]) }
+    }
+
+    func setOSCEnabled(_ on: Bool) {
+        oscEnabled = on
+        renderer.oscEnabled = on
+        UserDefaults.standard.set(on, forKey: "audiovane.osc")
+        Task { await Analytics.shared.track("osc_changed", ["on": on]) }
     }
 
     /// Called when the window first appears, so a preference set last session

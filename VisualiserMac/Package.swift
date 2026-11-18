@@ -79,12 +79,31 @@ let package = Package(
             path: "Tests/VibresiaShareImageTests",
             linkerSettings: testingLinkerSettings
         ),
+        // Sends the analysis (levels, spectrum, beat, tempo, genre, instruments)
+        // to other programs over OSC.
+        //
+        // On its own, and with tests of its own, because it is the one piece of
+        // the app that has to match a byte layout somebody else wrote down.
+        .target(
+            name: "VibresiaOSC",
+            path: "Sources/VibresiaOSC"
+        ),
+        .testTarget(
+            name: "VibresiaOSCTests",
+            dependencies: [
+                "VibresiaOSC",
+                .product(name: "Testing", package: "swift-testing")
+            ],
+            path: "Tests/VibresiaOSCTests",
+            linkerSettings: testingLinkerSettings
+        ),
         .executableTarget(
             name: "AudioVane",
             dependencies: [
                 .product(name: "PostHog", package: "posthog-ios"),
                 "VibresiaBrand",
                 "VibresiaMinify",
+                "VibresiaOSC",
                 "VibresiaShareImage",
             ],
             path: "Sources/VisualiserMac",

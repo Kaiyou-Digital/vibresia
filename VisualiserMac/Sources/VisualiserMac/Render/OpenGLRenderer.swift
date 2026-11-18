@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import OpenGL.GL3
 import simd
+import VibresiaOSC
 
 /// OpenGL 3.3 Core renderer. Drives NSOpenGLView's draw loop.
 /// Uses CVDisplayLink for vsync-paced redraws.
@@ -639,6 +640,8 @@ final class OpenGLRenderer: NSObject {
 
     /// Which vibescape was last drawn, for the uniform report.
     private var lastDrawnVibescape: Vibescape?
+    /// The id of the user's vibescape when that is what was drawn (the built-in is nil then), so it can be named too.
+    private var lastDrawnCustomID: String?
 
     /// Keeps the live uniform values published for the MCP tools.
     ///
@@ -1262,10 +1265,11 @@ final class OpenGLRenderer: NSObject {
         audio.tick()
         // The instrument classifier is only worth running when the band is
         // on screen — which, during auto-scan, means whenever the scanner
-        // is sitting on the band vibescape.
+        // is sitting on the band vibescape — or when the analysis is being
+        // sent out over OSC, since the instruments are part of what it sends.
         let isBandOnScreen = currentVibescape == .builtin(.band)
             || (currentVibescape == .builtin(.autoScan) && autoScanTarget == .builtin(.band))
-        audio.instruments.isEnabled = isBandOnScreen
+        audio.instruments.isEnabled = isBandOnScreen || oscSender != nil
 
         // Every vibescape runs on the sound-gated clock: it stops (easing out) when
         // there's no source or the music goes quiet, so nothing moves in silence.
@@ -1402,7 +1406,7 @@ final class OpenGLRenderer: NSObject {
     private func drawCustomVibescape(_ id: String, time: Float, snap: AudioSnapshot) {
         if customShaders[id] == nil { compileCustomShaderOnDemand(id: id) }
         guard let shader = customShaders[id] else { return }
-        drawShaderProgram(shader.mode, mode: nil, time: time, snap: snap)
+        drawShaderProgram(shader.mode, mode: nil, customID: id, time: time, snap: snap)
     }
 
     /// Compiles a user's vibescape straight from disk, for the case where it
@@ -1944,7 +1948,17 @@ final class OpenGLRenderer: NSObject {
     /// user's, goes through there, so this is the one place that sees the full
     /// set at the moment they're used.
     private func publishLiveUniforms(snap: AudioSnapshot, mode: Vibescape?) {
-        let beats = Float(beatClock.truncatingRemainder(dividingBy: 1024))
+        let reading = currentReading(snap: snap, mode: mode)
+        LiveUniforms.shared.record(reading)
+        // And out to disk, because the MCP server is a different process and
+        // wouldn't otherwise be able to read a single one of these.
+        LiveUniforms.publishToDisk(reading)
+    }
+
+    /// The uniform values as they are right now. Shared by the 5 Hz publisher
+    /// for the MCP tools and the 30 Hz sender for OSC, so the two can never
+    /// describe the music differently.
+    private func currentReading(snap: AudioSnapshot, mode: Vibescape?) -> LiveUniforms.Reading {
         var reading = LiveUniforms.Reading()
         reading.bass = snap.bass
         reading.mid = snap.mid
@@ -1965,17 +1979,77 @@ final class OpenGLRenderer: NSObject {
         reading.bpm = snap.bpm
         reading.rms = snap.rms
         reading.palette = Palette.palette(at: paletteIndex).name
-        reading.vibescape = mode?.rawValue ?? ""
+        reading.vibescape = mode?.rawValue ?? lastDrawnCustomID ?? ""
         let tracks = audio.tracks
         let length = tracks.duration ?? 0
         reading.trackPos = Float(tracks.position)
         reading.trackDuration = Float(length)
         reading.trackProgress = Float(min(1, max(0, length > 0 ? tracks.position / length : 0)))
         reading.trackKnown = tracks.positionIsKnown ? 1 : 0
-        LiveUniforms.shared.record(reading)
-        // And out to disk, because the MCP server is a different process and
-        // wouldn't otherwise be able to read a single one of these.
-        LiveUniforms.publishToDisk(reading)
+        return reading
+    }
+
+    // MARK: - OSC
+
+    /// Whether the analysis is sent to other programs over OSC. Switched from the
+    /// menu (`AppState.setOSCEnabled`); off until the person asks.
+    var oscEnabled = false {
+        didSet { if oscEnabled != oldValue { applyOSC() } }
+    }
+
+    /// Where it goes: this Mac, on this port (`defaults write` to change it).
+    var oscPort: UInt16 = 9420 {
+        didSet { if oscPort != oldValue, oscEnabled { applyOSC() } }
+    }
+
+    private var oscTimer: Timer?
+    private var oscSender: OSCSender?
+    private var oscBroadcaster = AnalysisBroadcaster()
+
+    private func applyOSC() {
+        oscTimer?.invalidate()
+        oscTimer = nil
+        oscSender?.stop()
+        oscSender = nil
+        guard oscEnabled else { return }
+        oscSender = OSCSender(host: "127.0.0.1", port: oscPort)
+        oscBroadcaster = AnalysisBroadcaster()
+        // 30 Hz on the main run loop, in .common so it keeps going while a menu
+        // is open, and like the uniform publisher it does not depend on the
+        // draw loop, which macOS stops when the window is hidden.
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.sendAnalysis() }
+        RunLoop.main.add(timer, forMode: .common)
+        oscTimer = timer
+    }
+
+    private func sendAnalysis() {
+        guard let oscSender else { return }
+        let snap = audio.snapshot
+        let reading = currentReading(snap: snap, mode: lastDrawnVibescape)
+        var frame = AnalysisFrame()
+        frame.bass = reading.bass
+        frame.mid = reading.mid
+        frame.treble = reading.treble
+        frame.level = reading.level
+        frame.levelSmooth = reading.levelSmooth
+        frame.bassSmooth = reading.bassSmooth
+        frame.active = reading.active
+        frame.presence = reading.presence
+        frame.scroll = reading.scroll
+        frame.beats = beatClock // not wrapped: the broadcaster looks for it crossing a whole number
+        frame.beatStrength = reading.beatStrength
+        frame.bpm = Float(reading.bpm)
+        frame.bands = reading.bands
+        frame.genre = genre.rawValue
+        frame.genreName = genre.name
+        frame.instruments = audio.instruments.presence()
+        frame.trackPos = reading.trackPos
+        frame.trackDuration = reading.trackDuration
+        frame.trackProgress = reading.trackProgress
+        frame.trackKnown = reading.trackKnown
+        frame.palette = reading.palette
+        frame.vibescape = reading.vibescape
+        oscSender.send(oscBroadcaster.packets(for: frame))
     }
 
     private func drawFullScreenShader(_ mode: Vibescape, time: Float, snap: AudioSnapshot) {
@@ -1990,7 +2064,7 @@ final class OpenGLRenderer: NSObject {
     /// peak caps, the badger overlay, the hamster sprites, the band's
     /// instruments — all belong to specific built-ins, and a custom vibescape has
     /// no such attachments.
-    private func drawShaderProgram(_ m: ShaderMode, mode: Vibescape?, time: Float, snap: AudioSnapshot) {
+    private func drawShaderProgram(_ m: ShaderMode, mode: Vibescape?, customID: String? = nil, time: Float, snap: AudioSnapshot) {
         glUseProgram(m.program)
         glUniform1f(m.time, time)
         glUniform1f(m.bass, snap.bass)
@@ -2046,6 +2120,7 @@ final class OpenGLRenderer: NSObject {
         // and the palette. Publishing them means an agent tuning a coefficient
         // can see what the app really throws at a shader, rather than guessing.
         lastDrawnVibescape = mode
+        lastDrawnCustomID = customID
         if mode == .spectrum {
             for i in 0..<spectrumPeaks.count {
                 let v = max(snap.bands[i * 2], snap.bands[i * 2 + 1])

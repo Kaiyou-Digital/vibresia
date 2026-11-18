@@ -117,6 +117,51 @@ The choice is remembered, and applied as soon as the window exists at launch.
 The level is logged once whenever it changes (`[window] level = floating`), which
 is the only way to answer "is it supposed to be on top?" from a bug report.
 
+## Sending the analysis to other programs (OSC)
+
+**Send Analysis over OSC** (Visualizer menu) sends what Vibresia hears to another
+program on the same Mac as [OSC](https://opensoundcontrol.stanford.edu/spec-1_0.html)
+over UDP, so a program that makes its own visuals (a VJ tool, a creative-coding
+environment, a compositor) can react to Vibresia's beat, tempo, genre and
+instruments as well as its levels. It goes to `127.0.0.1` port **9420** (change
+the port with `defaults write com.minithlabs.visualiser audiovane.oscPort -int 9500`),
+only while it is switched on, and the choice is remembered.
+
+Every message is under `/vibresia/`, and the names are the uniforms' own, without
+the `u` (`uBass` is `/vibresia/bass`).
+
+**State**, 30 times a second, as one OSC bundle (so a receiver applies it together):
+
+| Address | Type | Meaning |
+|---|---|---|
+| `bass`, `mid`, `treble`, `level` | float | smoothed energy, 0 to 1 |
+| `levelSmooth`, `bassSmooth` | float | the slow versions |
+| `active`, `presence` | float | 0 in silence, easing to 1 with sound; music presence |
+| `beats` | float | the beat counter locked to the detected tempo (`uBeats`, wrapping at 1024) |
+| `bpm` | float | the detected tempo, 0 when unknown |
+| `scroll` | float | forward-only distance, faster when louder (`uScroll`) |
+| `bands` | 96 floats | the spectrum, 40 Hz to 16 kHz on a log scale (`uBands`) |
+| `genre`, `genreName` | int, string | 0 classical, 1 electronic, 2 rock, 3 pop, 4 hiphop, 5 jazz, 6 blues, 7 country, 8 rnb, 9 ambient (`uGenre`), and its name |
+| `instruments` | 5 floats | confidence for drums, bass, guitar, keys, vocals; see below |
+| `trackPos`, `trackDuration`, `trackProgress`, `trackKnown` | float | where the playhead is in the track, 0 when unknown |
+| `palette`, `vibescape` | string | what is showing; `vibescape` is a built-in's name (`spectrum`) or, for your own, its id |
+| `instrumentNames` | 5 strings | the instrument order above; sent with the first frame and then every 2 seconds, because UDP has no connection to send it on once |
+
+**Event**, sent at the moment it happens and not inside the bundle (a beat lasts
+one frame and would often fall between two 30 Hz samples): `beat` (float) is sent
+each time the beat counter crosses a whole number. Its value is the strength of
+the onset pulse at that moment, which decays after each detected onset, so it is
+sometimes 0 for a beat the tempo tracker placed where no onset was heard.
+
+The instrument classifier normally runs only while The Band is on screen. While Send
+Analysis over OSC is on it runs on every vibescape, so the instrument confidences are
+always live (this costs some CPU, only for people who turned OSC on).
+
+The code is a target of its own, `Sources/VibresiaOSC`, with tests of its own
+(`Tests/VibresiaOSCTests`): the encoder is checked against the byte layouts in the
+OSC 1.0 specification, the broadcaster against an independent decoder, and the
+sender over a real UDP socket on this Mac.
+
 ## First launch
 
 A fresh install starts in **Auto Scan**, cycling every twenty seconds — with
