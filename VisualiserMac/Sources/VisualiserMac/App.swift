@@ -87,6 +87,9 @@ struct VisualiserApp: App {
                 Toggle("Float Above All Windows", isOn: Binding(
                     get: { app.alwaysOnTop },
                     set: { app.setAlwaysOnTop($0) }))
+                Toggle("Send Analysis over OSC", isOn: Binding(
+                    get: { app.oscEnabled },
+                    set: { app.setOSCEnabled($0) }))
                 Button(app.isFullScreen ? "Exit Full Screen" : "Enter Full Screen") {
                     app.toggleFullScreen()
                 }
