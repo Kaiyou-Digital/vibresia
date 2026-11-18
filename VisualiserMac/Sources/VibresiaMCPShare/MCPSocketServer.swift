@@ -129,13 +129,17 @@ public final class MCPSocketServer {
         let wasAccepting = accepting
         let alreadyStopped = stopped
         stopped = true
-        let open = Array(clients.values)
         idleWork?.cancel()
         lock.unlock()
         guard !alreadyStopped else { return }
         if wasAccepting { _ = acceptFinished.wait(timeout: .now() + 1) }
         close(listeningDescriptor)
         unlink(socketPath)
+        // Only now, once nothing is accepting: a client accepted while this waited would otherwise be missed and left
+        // open, and its other end would wait for ever.
+        lock.lock()
+        let open = Array(clients.values)
+        lock.unlock()
         open.forEach { $0.close() }
     }
 

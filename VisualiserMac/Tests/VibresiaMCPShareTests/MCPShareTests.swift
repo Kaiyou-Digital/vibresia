@@ -172,6 +172,38 @@ struct MCPShareTests {
         }
     }
 
+    @Test("Stopping the server also closes a client it had not got round to accepting")
+    func stopClosesClientsStillQueued() throws {
+        let path = scratchSocketPath()
+        defer { cleanUp(path) }
+        let server = try claimServer(path) // listening, but never started: nothing accepts
+        let connection = try #require(MCPShare.connect(socketPath: path))
+        defer { connection.close() }
+        server.stop()
+
+        var descriptor = pollfd(fd: connection.descriptor, events: Int16(POLLIN), revents: 0)
+        #expect(poll(&descriptor, 1, 2000) > 0, "the client was told the server had gone")
+        var byte: UInt8 = 0
+        #expect(read(connection.descriptor, &byte, 1) <= 0, "as an end of input, not as data")
+    }
+
+    @Test("Stopping the server closes every client, even one that is just being accepted")
+    func stopClosesAClientBeingAccepted() throws {
+        for round in 0..<60 {
+            let path = scratchSocketPath()
+            defer { cleanUp(path) }
+            let server = try claimServer(path)
+            server.start()
+            let connection = try #require(MCPShare.connect(socketPath: path))
+            defer { connection.close() }
+            Thread.sleep(forTimeInterval: Double(round % 6) * 0.02) // land the stop at different points of the accept loop
+            server.stop()
+
+            var descriptor = pollfd(fd: connection.descriptor, events: Int16(POLLIN), revents: 0)
+            #expect(poll(&descriptor, 1, 2000) > 0, "round \(round): the client was told the server had gone")
+        }
+    }
+
     @Test("The socket and its folder are private to the user")
     func socketIsPrivate() throws {
         let path = scratchSocketPath()

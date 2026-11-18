@@ -35,7 +35,7 @@ public enum MCPShare {
     /// `startupGraceSeconds` is how long a server that nobody has connected to yet waits before it gives up, so a
     /// background server whose launcher died leaves nothing running.
     public static func claim(socketPath: String, idleSeconds: Double = 5, startupGraceSeconds: Double = 10) throws -> Claim {
-        guard socketPath.utf8.count < MemoryLayout.size(ofValue: sockaddr_un().sun_path) else {
+        guard stagedPath(for: socketPath).utf8.count < MemoryLayout.size(ofValue: sockaddr_un().sun_path) else {
             throw ClaimError.pathTooLong
         }
         try makeFolder((socketPath as NSString).deletingLastPathComponent)
@@ -136,27 +136,34 @@ public enum MCPShare {
         return descriptor
     }
 
+    /// Where a socket is made before it is moved into place: in a folder of its own, which only the user can enter.
+    private static func stagedPath(for path: String) -> String {
+        (path as NSString).deletingLastPathComponent + "/.mcp-staging-12345678/s"
+    }
+
+    /// Makes the socket private without touching the process's umask, which every thread shares: it is bound inside a
+    /// folder only the user can enter, given its mode, and then moved to where clients look for it (a rename is atomic,
+    /// so a client sees either no socket or a listening one).
     private static func listenSocket(_ path: String) throws -> Int32 {
+        let folder = (path as NSString).deletingLastPathComponent + "/.mcp-staging-" + UUID().uuidString.prefix(8)
+        guard mkdir(folder, 0o700) == 0 else { throw ClaimError.listen(errno) }
+        let staged = folder + "/s"
+        defer {
+            unlink(staged) // only if it was not moved
+            rmdir(folder)
+        }
+
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw ClaimError.listen(errno) }
-        var target = address(path)
-        let previous = umask(0o177) // so the socket is never visible to others, even for an instant
+        var target = address(staged)
         let bound = withUnsafePointer(to: &target) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
-        umask(previous)
-        guard bound == 0 else {
+        guard bound == 0, chmod(staged, 0o600) == 0, listen(descriptor, 32) == 0, rename(staged, path) == 0 else {
             let reason = errno
             close(descriptor)
-            throw ClaimError.listen(reason)
-        }
-        chmod(path, 0o600)
-        guard listen(descriptor, 32) == 0 else {
-            let reason = errno
-            close(descriptor)
-            unlink(path)
             throw ClaimError.listen(reason)
         }
         return descriptor
@@ -180,32 +187,6 @@ public final class MCPSocketConnection {
     }
 
     deinit { close() }
-}
-
-/// What a proxy does: copy stdin to the server and the server's replies to stdout.
-public enum MCPProxy {
-    /// Returns when the server has finished replying after stdin closed, or the server goes away. The caller exits.
-    public static func run(_ connection: MCPSocketConnection, input: Int32 = STDIN_FILENO, output: Int32 = STDOUT_FILENO) {
-        let descriptor = connection.descriptor
-        // stdin to the server, on a thread of its own; when stdin ends, tell the server so it can finish and close.
-        Thread.detachNewThread {
-            copy(from: input, to: descriptor)
-            shutdown(descriptor, SHUT_WR)
-        }
-        copy(from: descriptor, to: output)
-        connection.close()
-    }
-
-    /// Copies until the source ends or the destination cannot be written.
-    private static func copy(from source: Int32, to destination: Int32) {
-        var buffer = [UInt8](repeating: 0, count: 65536)
-        while true {
-            let count = read(source, &buffer, buffer.count)
-            if count < 0, errno == EINTR { continue }
-            if count <= 0 { return }
-            if !writeAll(destination, buffer, count: count) { return }
-        }
-    }
 }
 
 /// Writes every byte, or reports that it could not.
