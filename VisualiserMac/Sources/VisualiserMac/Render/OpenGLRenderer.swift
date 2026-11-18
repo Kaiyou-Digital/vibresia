@@ -640,6 +640,8 @@ final class OpenGLRenderer: NSObject {
 
     /// Which vibescape was last drawn, for the uniform report.
     private var lastDrawnVibescape: Vibescape?
+    /// The id of the user's vibescape when that is what was drawn (the built-in is nil then), so it can be named too.
+    private var lastDrawnCustomID: String?
 
     /// Keeps the live uniform values published for the MCP tools.
     ///
@@ -1403,7 +1405,7 @@ final class OpenGLRenderer: NSObject {
     private func drawCustomVibescape(_ id: String, time: Float, snap: AudioSnapshot) {
         if customShaders[id] == nil { compileCustomShaderOnDemand(id: id) }
         guard let shader = customShaders[id] else { return }
-        drawShaderProgram(shader.mode, mode: nil, time: time, snap: snap)
+        drawShaderProgram(shader.mode, mode: nil, customID: id, time: time, snap: snap)
     }
 
     /// Compiles a user's vibescape straight from disk, for the case where it
@@ -1976,7 +1978,7 @@ final class OpenGLRenderer: NSObject {
         reading.bpm = snap.bpm
         reading.rms = snap.rms
         reading.palette = Palette.palette(at: paletteIndex).name
-        reading.vibescape = mode?.rawValue ?? ""
+        reading.vibescape = mode?.rawValue ?? lastDrawnCustomID ?? ""
         let tracks = audio.tracks
         let length = tracks.duration ?? 0
         reading.trackPos = Float(tracks.position)
@@ -2061,7 +2063,7 @@ final class OpenGLRenderer: NSObject {
     /// peak caps, the badger overlay, the hamster sprites, the band's
     /// instruments — all belong to specific built-ins, and a custom vibescape has
     /// no such attachments.
-    private func drawShaderProgram(_ m: ShaderMode, mode: Vibescape?, time: Float, snap: AudioSnapshot) {
+    private func drawShaderProgram(_ m: ShaderMode, mode: Vibescape?, customID: String? = nil, time: Float, snap: AudioSnapshot) {
         glUseProgram(m.program)
         glUniform1f(m.time, time)
         glUniform1f(m.bass, snap.bass)
@@ -2117,6 +2119,7 @@ final class OpenGLRenderer: NSObject {
         // and the palette. Publishing them means an agent tuning a coefficient
         // can see what the app really throws at a shader, rather than guessing.
         lastDrawnVibescape = mode
+        lastDrawnCustomID = customID
         if mode == .spectrum {
             for i in 0..<spectrumPeaks.count {
                 let v = max(snap.bands[i * 2], snap.bands[i * 2 + 1])
