@@ -22,30 +22,47 @@ final class MCPServer {
         self.output = output
     }
 
-    /// Reads messages until stdin closes.
+    /// Starts reading messages; the process leaves when stdin closes.
+    ///
+    /// Waiting for a line blocks, so it happens on a thread of its own and
+    /// returns at once. Each request is then handled on the main thread, in
+    /// the order it arrived, as before (the tools draw with OpenGL). Reading
+    /// on the main thread left the app's run loop unserviced for as long as
+    /// the client was connected, and macOS listed the process as Not
+    /// Responding in Activity Monitor.
     func run() {
         // The app's own stdout is a log; in MCP vibescape stdout is the protocol
         // channel, so nothing else may write to it.
         setvbuf(stdout, nil, _IONBF, 0)
         NSLog("[MCP] listening on stdio")
 
-        while let line = readLine(strippingNewline: true) {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
-            guard let data = trimmed.data(using: .utf8),
-                  let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let method = request["method"] as? String else {
-                continue
+        Thread.detachNewThread { [self] in
+            while let line = readLine(strippingNewline: true) {
+                DispatchQueue.main.async { self.process(line) }
             }
-            handle(method: method, request: request)
-        }
 
-        // stdin closed, so the client has gone. A stdio server that outlives
-        // its client is a process nobody will ever reap, and the client that
-        // launched it is already waiting for it to go away — so leave.
-        // `fflush` first: the last response is still sitting in the buffer.
-        fflush(stdout)
-        exit(0)
+            // stdin closed, so the client has gone. A stdio server that outlives
+            // its client is a process nobody will ever reap, and the client that
+            // launched it is already waiting for it to go away — so leave. Queued
+            // behind the requests already read, so the last response goes out
+            // first; `fflush` because it may still be sitting in the buffer.
+            DispatchQueue.main.async {
+                fflush(stdout)
+                exit(0)
+            }
+        }
+    }
+
+    /// One line from the client: a JSON-RPC message, or something to skip.
+    private func process(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return }
+        guard let data = trimmed.data(using: .utf8),
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let method = request["method"] as? String else {
+            return
+        }
+        handle(method: method, request: request)
     }
 
     private func handle(method: String, request: [String: Any]) {
