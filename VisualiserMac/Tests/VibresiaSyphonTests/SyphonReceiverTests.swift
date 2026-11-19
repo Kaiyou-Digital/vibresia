@@ -11,7 +11,7 @@ import Testing
 /// A Syphon surface holds the picture bottom row first (the order OpenGL draws in), so a receiver that draws it as it is shows it upright.
 /// The sender here is a Metal server, as Quartzing is: it publishes a Metal texture (top row first) with `flipped: true`, which is how a
 /// Metal app makes the surface OpenGL apps expect.
-@Suite(.serialized)
+@Suite(.serialized, .enabled(if: openGLContextIsAvailable, "needs an accelerated OpenGL context, which a CI virtual machine does not have"))
 struct SyphonReceiverTests {
     private let width = 32, height = 16
 
