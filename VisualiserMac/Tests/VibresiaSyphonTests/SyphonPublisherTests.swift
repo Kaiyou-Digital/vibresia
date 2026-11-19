@@ -10,7 +10,7 @@ import Testing
 ///
 /// A Syphon surface holds the picture bottom row first (the order OpenGL draws in; measured in the Syphon package's own interop tests). A Metal
 /// client reads the surface as it is, so the picture's bottom is in its first row.
-@Suite(.serialized)
+@Suite(.serialized, .enabled(if: openGLContextIsAvailable, "needs an accelerated OpenGL context, which a CI virtual machine does not have"))
 struct SyphonPublisherTests {
     private let width = 32, height = 16
 
